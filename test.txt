@@ -1,0 +1,53 @@
+import requests
+from bs4 import BeautifulSoup
+import json
+import openpyxl
+
+# Excelファイルを開く
+excel_path = '/content/シート1 - コピー.xlsx'
+wb = openpyxl.load_workbook(excel_path)
+sheet1 = wb['Sheet1']
+
+# シート2が存在しない場合は追加する
+if 'Sheet2' not in wb.sheetnames:
+    sheet2 = wb.create_sheet(title='Sheet2')
+else:
+    sheet2 = wb['Sheet2']
+
+# シート1のE列3行目以降のプラグインIDを取得
+plugin_ids = [sheet1.cell(row=i, column=5).value for i in range(3, sheet1.max_row + 1) if sheet1.cell(row=i, column=5).value is not None]
+
+# 各プラグインIDに対してデータを取得する
+for index, plugin_id in enumerate(plugin_ids):
+    url = f'https://jp.tenable.com/plugins/nessus/{plugin_id}' #ページの指定
+    
+    try:
+        # ページのHTMLを取得
+        response = requests.get(url)
+        response.raise_for_status()  # ステータスコードが200でない場合、例外を発生させる
+
+        # BeautifulSoupでHTMLを解析
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # JSONデータが含まれているスクリプトタグを見つける
+        script_tag = soup.find('script', {'id': '__NEXT_DATA__'})
+        data = json.loads(script_tag.string)
+
+        # descriptionの内容を取得
+        summary = data['props']['pageProps']['plugin']['synopsis']
+        description = data['props']['pageProps']['plugin']['description']
+        solution = data['props']['pageProps']['plugin']['solution']
+
+    except (requests.exceptions.RequestException, AttributeError, KeyError):
+        # レスポンスが200以外の場合やデータ取得に失敗した場合
+        summary = "公式日本語訳が見つかりませんでした"
+        description = "公式日本語訳が見つかりませんでした"
+        solution = "公式日本語訳が見つかりませんでした"
+
+    # シート2に結果を記載
+    sheet2.cell(row=index+2, column=1, value=summary)
+    sheet2.cell(row=index+2, column=2, value=description)
+    sheet2.cell(row=index+2, column=3, value=solution)
+
+# Excelファイルを保存
+wb.save(excel_path)
